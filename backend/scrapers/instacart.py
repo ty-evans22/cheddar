@@ -305,7 +305,7 @@ def _parse_instacart_item(item: dict, store_name: str) -> Optional[Product]:
 
         return Product(
             id = item.get("id", ""),
-            name=item.get("Name", ""),
+            name=item.get("name", ""),
             brand=item.get("brandName"),
             size=item.get("size"),
             price=price,
