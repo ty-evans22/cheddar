@@ -333,14 +333,10 @@ def _extract_descriptors(item: dict) -> list[str]:
     descriptors = []
 
     try:
-        dietary = item.get("dietary", {})
-        view_section = dietary.get("viewSection", {})
-        attribute_sections = view_section.get("attributeSections", [])
-
-        for section in attribute_sections:
-            attribute_string = section.get("attributeString")
-            if attribute_string:
-                descriptors.append(attribute_string)
+        attributes = item.get("dietary", {}).get("mlShoppingAttributes", {})
+        
+        for attribute in attributes:
+            descriptors.append(attribute)
     except Exception as e:
         print(f"Error extracting descriptors: {e}")
 
