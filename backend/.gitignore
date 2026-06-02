@@ -1,0 +1,6 @@
+# .gitignore file for backend Python project
+
+.env
+__pycache__/
+*.pyc
+.venv/
