@@ -1,12 +1,14 @@
 import os
-import httpx
 import json
 import uuid
 from typing import Optional
+from curl_cffi.requests import AsyncSession
 from models.base import Product
+from utils.http import browser_session
 
 SEARCH_QUERY_HASH = os.getenv("SEARCH_QUERY_HASH")
 ITEMS_QUERY_HASH = os.getenv("ITEMS_QUERY_HASH")
+POSTAL_CODE = os.getenv("POSTAL_CODE")
 
 ITEM_PLACEMENT_TYPES = {
     "SearchContentManagementSearchItemGrid",
@@ -17,16 +19,8 @@ HEADERS = {
     "accept": "*/*",
     "accept-language": "en-US,en;q=0.9",
     "content-type": "application/json",
-    "user-agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/148.0.0.0 Safari/537.36"
-    ),
     "x-client-identifier": "web",
     "x-ic-view-layer": "true",
-    "sec-ch-ua": '"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"',
-    "sec-ch-ua-mobile": "?0",
-    "sec-ch-ua-platform": '"Windows"',
     "sec-fetch-dest": "empty",
     "sec-fetch-mode": "cors",
     "sec-fetch-site": "same-origin",
@@ -34,7 +28,7 @@ HEADERS = {
 
 _sessions: dict[str, dict] = {}
 
-async def _get_session(client: httpx.AsyncClient, domain: str) -> dict:
+async def _get_session(client: AsyncSession, domain: str) -> dict:
     if domain in _sessions:
         return _sessions[domain]
 
@@ -47,12 +41,11 @@ async def _get_session(client: httpx.AsyncClient, domain: str) -> dict:
                 "image/avif,image/webp,image/apng,*/*;q=0.8"
             ),
             "accept-language": "en-US,en;q=0.9",
-            "user-agent": HEADERS["user-agent"],
             "sec-fetch-dest": "document",
             "sec-fetch-mode": "navigate",
             "sec-fetch-site": "none",
         },
-        follow_redirects=True,
+        allow_redirects=True,
     )
 
     cookies = dict(homepage_response.cookies)
@@ -88,7 +81,7 @@ def _collect_search_item_ids(placements: list) -> list[str]:
     return item_ids
 
 async def _fetch_items(
-    client: httpx.AsyncClient,
+    client: AsyncSession,
     domain: str,
     shop_id: str,
     zone_id: str,
@@ -146,7 +139,7 @@ async def search_instacart_store(
     zone_id: str,
     store_name: str,
     query: str,
-    postal_code: str = "55033",
+    postal_code: str = POSTAL_CODE,
     limit: int = 40,
 ) -> list[Product]:
     """
@@ -189,7 +182,7 @@ async def search_instacart_store(
         "extensions": json.dumps(extensions, separators=(',', ':')),
     }
 
-    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+    async with browser_session() as client:
         session_cookies = await _get_session(client, domain)
 
         # ── Step 1: get search placements and collect itemIds ──────────────────
@@ -323,9 +316,6 @@ def _parse_instacart_item(item: dict, store_name: str) -> Optional[Product]:
         print(f"Error parsing item: {e}")
         return None
     
-# Extract descriptors from the dietary section
-# Looks in dietary -> viewSection -> attributeSections
-# and extracts the attributeString from each section
 def _extract_descriptors(item: dict) -> list[str]:
     """
      Extract product descriptors from the dietary section of the item data.

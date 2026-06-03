@@ -1,8 +1,8 @@
-import os
 import uuid
-import httpx
 from typing import Optional
+from curl_cffi.requests import AsyncSession
 from models.base import Product
+from utils.http import browser_session
 
 SEARCH_URL = "https://www.hy-vee.com/aisles-online/api/search/products"
 
@@ -11,14 +11,6 @@ HEADERS = {
     "accept-language": "en-US,en;q=0.9",
     "content-type": "application/json",
     "origin": "https://www.hy-vee.com",
-    "user-agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/148.0.0.0 Safari/537.36"
-    ),
-    "sec-ch-ua": '"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"',
-    "sec-ch-ua-mobile": "?0",
-    "sec-ch-ua-platform": '"Windows"',
     "sec-fetch-dest": "empty",
     "sec-fetch-mode": "cors",
     "sec-fetch-site": "same-origin",
@@ -26,7 +18,7 @@ HEADERS = {
 
 _sessions: dict[str, dict] = {}
 
-async def _get_session(client: httpx.AsyncClient, domain: str = "www.hy-vee.com") -> dict:
+async def _get_session(client: AsyncSession, domain: str = "www.hy-vee.com") -> dict:
     """
     Load the Aisles Online search page once to pick up session/anti-bot cookies
     (hyveeSessionId, __cf_bm, etc.) that the API endpoint expects.
@@ -43,12 +35,11 @@ async def _get_session(client: httpx.AsyncClient, domain: str = "www.hy-vee.com"
                 "image/avif,image/webp,image/apng,*/*;q=0.8"
             ),
             "accept-language": "en-US,en;q=0.9",
-            "user-agent": HEADERS["user-agent"],
             "sec-fetch-dest": "document",
             "sec-fetch-mode": "navigate",
             "sec-fetch-site": "none",
         },
-        follow_redirects=True,
+        allow_redirects=True,
     )
     cookies = dict(resp.cookies)
     print(f"Session cookies obtained for {domain}: {list(cookies.keys())}")
@@ -78,7 +69,7 @@ async def search_hyvee_store(
         "storeId": int(store_id),
     }
  
-    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+    async with browser_session() as client:
         session_cookies = await _get_session(client)
  
         resp = await client.post(
@@ -87,7 +78,6 @@ async def search_hyvee_store(
             headers={
                 **HEADERS,
                 "referer": f"https://www.hy-vee.com/aisles-online/search?search={query.replace(' ', '+')}",
-                # Just a trace id; a fresh UUID per request is fine.
                 "x-hy-vee-correlation-id": str(uuid.uuid4()),
             },
             cookies=session_cookies,
@@ -154,15 +144,11 @@ def _parse_hyvee_item(item: dict, store_name: str) -> Optional[Product]:
         image = item.get("image") or {}
         image_url = image.get("url")
  
-        # The search response only carries WIC/SNAP badges per item; the dietary
-        # tags (organic, lactose free, ...) appear only as aggregate searchFilters,
-        # not per product. Left empty here — a product-detail call would be needed
-        # to populate dietary descriptors.
         return Product(
             id=str(item.get("id", "")),
             name=item.get("description", ""),
             brand=None,                       # not present in search payload
-            size=item.get("unitOfMeasure"),   # e.g. "128 fl oz"
+            size=item.get("unitOfMeasure"),
             price=price,
             regular_price=regular_price,
             on_sale=on_sale,
