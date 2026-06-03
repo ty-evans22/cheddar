@@ -204,12 +204,12 @@ def _parse_hyvee_item(
             price=price,
             regular_price=regular_price,
             on_sale=on_sale,
-            sale_conditions=None,             # no promo text in search payload
+            sale_conditions=None,                               # no promo text in search payload
             image_url=image_url,
             store=store_name,
-            store_location=None,              # aisle not in search payload
+            store_location=None,                                # aisle not in search payload
             in_stock=bool(item.get("isEcommerceActive", True)),
-            upc=item.get("upc"),
+            upc=item.get("upc"),                                # hyvee UPCs are unreliable but we include anyway
             descriptors=[],
         )
     except Exception as e:
