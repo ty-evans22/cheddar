@@ -168,15 +168,6 @@ def _parse_hyvee_item(
 ) -> Optional[Product]:
     """
      Map one raw Hy-Vee item onto the Product model.
- 
-     Pricing fields observed in the payload:
-         tagPriceValue   -> price on the shelf tag right now (current price)
-         basePriceValue  -> regular/base price
-         memberPrice     -> Fuel Saver / member price (often null)
-         computedPrice   -> final computed price after adjustments (often null)
-     We treat tagPriceValue as the current price and basePriceValue as the
-     regular price. VERIFY against one of the "On Sale" items (the searchFilters
-     block reported a few) to confirm which field drops on a sale.
     """
     try:
         pricing = item.get("pricing", {}) or {}
@@ -208,7 +199,7 @@ def _parse_hyvee_item(
         return Product(
             id=str(item.get("id", "")),
             name=description,
-            brand=brand,                       # not present in search payload
+            brand=brand,
             size=item.get("unitOfMeasure"),
             price=price,
             regular_price=regular_price,
