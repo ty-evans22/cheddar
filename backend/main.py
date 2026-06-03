@@ -14,14 +14,14 @@ CUB_SHOP_ID = os.getenv("CUB_SHOP_ID")
 CUB_ZONE_ID = os.getenv("CUB_ZONE_ID")
 COBORNS_SHOP_ID = os.getenv("COBORNS_SHOP_ID")
 COBORNS_ZONE_ID = os.getenv("COBORNS_ZONE_ID")
-ALDI_STORE_ID = os.getenv("ALDI_STORE_ID")
+ALDI_SHOP_ID = os.getenv("ALDI_SHOP_ID")
 ALDI_ZONE_ID = os.getenv("ALDI_ZONE_ID")
 
 # Map store names to their scraper functions
 STORE_SCRAPERS = {
     "cub-foods": lambda q: search_cub_foods(q, CUB_SHOP_ID, CUB_ZONE_ID),
     "coborns": lambda q: search_coborns(q, COBORNS_SHOP_ID, COBORNS_ZONE_ID),
-    "aldi": lambda q: search_aldi(q, ALDI_STORE_ID, ALDI_ZONE_ID),
+    "aldi": lambda q: search_aldi(q, ALDI_SHOP_ID, ALDI_ZONE_ID),
 }
 
 # Normalize store names from Google Places to match scraper keys
