@@ -4,6 +4,7 @@ from fastapi import FastAPI, Query, HTTPException
 from dotenv import load_dotenv
 from models.base import Product
 from scrapers.instacart import search_cub_foods, search_coborns, search_aldi
+from scrapers.hyvee import search_hyvee
 from typing import Optional
 
 load_dotenv()
@@ -16,15 +17,17 @@ COBORNS_SHOP_ID = os.getenv("COBORNS_SHOP_ID")
 COBORNS_ZONE_ID = os.getenv("COBORNS_ZONE_ID")
 ALDI_SHOP_ID = os.getenv("ALDI_SHOP_ID")
 ALDI_ZONE_ID = os.getenv("ALDI_ZONE_ID")
+HYVEE_STORE_ID = os.getenv("HYVEE_STORE_ID")
 
 # Map store names to their scraper functions
 STORE_SCRAPERS = {
     "cub-foods": lambda q: search_cub_foods(q, CUB_SHOP_ID, CUB_ZONE_ID),
     "coborns": lambda q: search_coborns(q, COBORNS_SHOP_ID, COBORNS_ZONE_ID),
     "aldi": lambda q: search_aldi(q, ALDI_SHOP_ID, ALDI_ZONE_ID),
+    "hy-vee": lambda q: search_hyvee(q, HYVEE_STORE_ID),
 }
 
-# Normalize store names from Google Places to match scraper keys
+# Normalize store names from search query to match scraper keys
 def _normalize_store_name(name: str) -> Optional[str]:
     name_lower = name.lower()
     if "cub" in name_lower:
@@ -33,6 +36,8 @@ def _normalize_store_name(name: str) -> Optional[str]:
         return "aldi"
     if "coborn" in name_lower:
         return "coborns"
+    if "hy-vee" in name_lower or "hyvee" in name_lower or "hy vee" in name_lower:
+        return "hy-vee"
     return None
 
 # Search for a product across multiple stores in parallel
