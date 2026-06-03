@@ -23,6 +23,7 @@ cd ...\\cheddar\\backend
 
 2. Run the backend locally:
 ```bash
+pip install -r requirements.txt
 python -m uvicorn main:app --reload --port 8001
 ```
 _Note: The port may be changed to any open port you may have_
