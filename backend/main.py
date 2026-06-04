@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from models.base import Product
 from scrapers.instacart import search_cub_foods, search_coborns, search_aldi
 from scrapers.hyvee import search_hyvee
+from scrapers.walmart.walmart import search_walmart
 from typing import Optional
 
 load_dotenv()
@@ -25,6 +26,7 @@ STORE_SCRAPERS = {
     "coborns": lambda q: search_coborns(q, COBORNS_SHOP_ID, COBORNS_ZONE_ID),
     "aldi": lambda q: search_aldi(q, ALDI_SHOP_ID, ALDI_ZONE_ID),
     "hy-vee": lambda q: search_hyvee(q, HYVEE_STORE_ID),
+    "walmart": lambda q: search_walmart(q),
 }
 
 # Normalize store names from search query to match scraper keys
@@ -38,6 +40,8 @@ def _normalize_store_name(name: str) -> Optional[str]:
         return "coborns"
     if "hy-vee" in name_lower or "hyvee" in name_lower or "hy vee" in name_lower:
         return "hy-vee"
+    if "walmart" in name_lower:
+        return "walmart"
     return None
 
 # Search for a product across multiple stores in parallel

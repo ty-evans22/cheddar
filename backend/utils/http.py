@@ -1,6 +1,7 @@
 """
 Shared HTTP client for all scrapers.
 """
+from typing import Optional
 from curl_cffi.requests import AsyncSession
 
 # "chrome" tracks the latest Chrome profile curl_cffi ships. Pin a specific
@@ -9,9 +10,15 @@ from curl_cffi.requests import AsyncSession
 DEFAULT_IMPERSONATE = "chrome"
 DEFAULT_TIMEOUT = 20.0
 
-def browser_session(**kwargs) -> AsyncSession:
+def browser_session(proxy: Optional[str] = None, **kwargs) -> AsyncSession:
     """
     Create an AsyncSession that impersonates a real browser.
+
+    Args:
+        proxy: Optional proxy URL ("scheme://user:pass@host:port"). Applied to
+            both http and https. For the Walmart scraper this MUST be the same
+            sticky residential session used to warm the browser, or PerimeterX
+            will invalidate the warmed _px3 cookie (it's bound to the exit IP).
  
     Notes:
       - Let impersonation own the fingerprint headers (user-agent, sec-ch-ua*).
@@ -23,4 +30,6 @@ def browser_session(**kwargs) -> AsyncSession:
     """
     kwargs.setdefault("impersonate", DEFAULT_IMPERSONATE)
     kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
+    if proxy:
+        kwargs.setdefault("proxies", {"http": proxy, "https": proxy})
     return AsyncSession(**kwargs)
