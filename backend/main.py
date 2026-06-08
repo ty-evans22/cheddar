@@ -1,14 +1,35 @@
 import os
 import asyncio
+import contextlib
+import time
 from fastapi import FastAPI, Query, HTTPException
 from dotenv import load_dotenv
 from models.base import Product
 from scrapers.instacart import search_cub_foods, search_coborns, search_aldi
 from scrapers.hyvee import search_hyvee
 from scrapers.walmart.walmart import search_walmart
+from scrapers.walmart.walmart_session import get_warmed_session, SESSION_TTL_SECONDS
 from typing import Optional
 
 load_dotenv()
+
+async def _prewarm_loop():
+    while True:
+        try:
+            s = await get_warmed_session()                 # warms only if missing/expired
+            if time.time() - s.created_at > SESSION_TTL_SECONDS * 0.8:
+                await get_warmed_session(force=True)        # refresh ahead of expiry
+        except Exception as e:
+            print(f"Walmart pre-warm failed: {e}")
+        await asyncio.sleep(60)
+
+@contextlib.asynccontextmanager
+async def lifespan(app):
+    task = asyncio.create_task(_prewarm_loop())
+    yield
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
 
 app = FastAPI(title="Cheddar API")
 
