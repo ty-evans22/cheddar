@@ -29,9 +29,11 @@ Re-warm when the cookie TTL expires or when a replay comes back challenged
 (see is_challenged() in walmart.py).
 """
 import os
+import json
 import time
 import uuid
 import asyncio
+import random
 from dataclasses import dataclass, field
 from typing import Optional
 import nodriver as uc
@@ -53,6 +55,32 @@ SESSION_TTL_SECONDS = float(os.getenv("WALMART_SESSION_TTL", "900"))  # 15 min
 # _abck cookie transitions to a validated state before we read cookies.
 WARM_DWELL_SECONDS = 6.0
 WARM_NAV_TIMEOUT = 45.0
+
+_SESSION_FILE = os.getenv("WALMART_SESSION_FILE", ".walmart_session.json")
+
+def _save_session(s: "WarmedSession") -> None:
+    try:
+        with open(_SESSION_FILE, "w") as f:
+            json.dump({"cookies": s.cookies, "user_agent": s.user_agent,
+                       "proxy_url": s.proxy_url, "created_at": s.created_at}, f)
+    except Exception as e:
+        print(f"Could not persist warmed session: {e}")
+
+def _load_session() -> Optional["WarmedSession"]:
+    try:
+        with open(_SESSION_FILE) as f:
+            d = json.load(f)
+    except (FileNotFoundError, ValueError):
+        return None
+    s = WarmedSession(cookies=d.get("cookies", {}), user_agent=d.get("user_agent", ""),
+                      proxy_url=d.get("proxy_url"), created_at=d.get("created_at", 0))
+    return None if s.is_expired() else s
+
+def _clear_session() -> None:
+    try:
+        os.remove(_SESSION_FILE)
+    except FileNotFoundError:
+        pass
 
 
 @dataclass
@@ -168,8 +196,12 @@ async def _warm() -> WarmedSession:
             await _install_proxy_auth(browser, proxy_user, proxy_pass)
 
         page = await browser.get("https://www.walmart.com")
-        # Let the PerimeterX/Akamai JS execute and the behavioral score settle.
-        await page.sleep(WARM_DWELL_SECONDS)
+
+        # Add a couple of scrolls and randomized dwells to give PerimeterX more behavioral signals
+        await page.evaluate("window.scrollTo(0, 500)")
+        await page.sleep(random.uniform(0.8, 1.8))
+        await page.evaluate("window.scrollTo(0, 1200)")
+        await page.sleep(random.uniform(1.2, 2.5))
 
         await _select_store(page)
 
@@ -236,6 +268,15 @@ async def get_warmed_session(force: bool = False) -> WarmedSession:
     """
     global _warmed
     async with _warm_lock:
-        if force or _warmed is None or _warmed.is_expired():
-            _warmed = await _warm()
+        if force:
+            _clear_session()
+            _warmed = None
+        if _warmed and not _warmed.is_expired():
+            return _warmed
+        disk = _load_session()
+        if disk:
+            _warmed = disk
+            return _warmed
+        _warmed = await _warm()
+        _save_session(_warmed)
         return _warmed
