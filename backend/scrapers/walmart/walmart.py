@@ -29,7 +29,7 @@ from typing import Optional
 
 from models.base import Product
 from utils.http import browser_session
-from utils.parser import match_brand
+from utils.parser import match_brand, parse_size_from_name, derive_quantity
 from scrapers.walmart.walmart_session import get_warmed_session, WarmedSession
 
 SEARCH_HASH = "49f99afbb6fcc5adeb8df7d55ecc1f8fa3b7448f854f82a04088183137f03cd4"
@@ -304,6 +304,17 @@ def _extract_brands(data: dict) -> list[str]:
                 return names
     return []
 
+def _resolve_size(item, price):
+    name_size = parse_size_from_name(item.get("name") or "")
+    if name_size:
+        return name_size
+    unit_price = (item.get("priceInfo") or {}).get("unitPrice") or {}
+    derived = derive_quantity(price, unit_price.get("price"), unit_price.get("priceString", ""))
+    if derived:
+        qty, unit = derived
+        return f"{qty:g} {unit}"
+    return None
+
 def _parse_walmart_items(raw_items: list[dict], store_name: str, brands: list[str]) -> list[Product]:
     products = []
     for item in raw_items:
@@ -343,7 +354,7 @@ def _parse_walmart_item(item: dict, store_name: str, brands: list[str]) -> Optio
             id=str(item.get("usItemId") or item.get("id")),
             name=name,
             brand=match_brand(name, brands),
-            size=None,                          # derive from unitPrice / name later
+            size=_resolve_size(item, price),    # name first, unit-price fallback
             price=price,
             regular_price=regular_price,
             on_sale=on_sale,
