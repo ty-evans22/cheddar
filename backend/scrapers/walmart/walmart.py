@@ -29,6 +29,7 @@ from typing import Optional
 
 from models.base import Product
 from utils.http import browser_session
+from utils.parser import match_brand
 from scrapers.walmart.walmart_session import get_warmed_session, WarmedSession
 
 SEARCH_HASH = "49f99afbb6fcc5adeb8df7d55ecc1f8fa3b7448f854f82a04088183137f03cd4"
@@ -233,9 +234,12 @@ async def search_walmart_store(
         print(f"No Walmart items for '{query}' (x-gql-status={resp.headers.get('x-gql-status')})")
         return []
 
-    products = _parse_walmart_items(raw_items[:limit], store_name)
+    brands = _extract_brands(data)
+    products = _parse_walmart_items(raw_items[:limit], store_name, brands)
     agg = (((data.get("data") or {}).get("search") or {}).get("searchResult") or {}).get("aggregatedCount")
-    print(f"Parsed {len(products)} Walmart products for '{query}' (aggregatedCount={agg})")
+    matched = sum(1 for p in products if p.brand)
+    print(f"Parsed {len(products)} Walmart products for '{query}' "
+          f"(aggregatedCount={agg}, {len(brands)} brands in facet, {matched} matched)")
     return products
 
 
@@ -273,17 +277,43 @@ def _extract_items(data, drop_sponsored=True):
             items.append(item)
     return items
 
+def _extract_brands(data: dict) -> list[str]:
+    """
+    Brand vocabulary from the SearchSortFilterModule's brand facet:
+        data.contentLayout.modules[type=SearchSortFilterModule]
+            .configs.topNavFacets[type=brand].values[].name
+    Returns [] when the facet is absent (brand resolution is then skipped and the
+    name-parse fallback takes over). valueDisplayLimit is 50, so for most grocery
+    queries this is the complete brand set, not a sample.
+    """
+    try:
+        modules = data["data"]["contentLayout"]["modules"]
+    except (KeyError, TypeError):
+        return []
+    for module in modules or []:
+        if module.get("type") != "SearchSortFilterModule":
+            continue
+        facets = (module.get("configs") or {}).get("topNavFacets") or []
+        for facet in facets:
+            if facet.get("type") == "brand" or (facet.get("name") or "").lower() == "brand":
+                names = []
+                for v in facet.get("values") or []:
+                    label = v.get("name") or v.get("title") or v.get("id")
+                    if label:
+                        names.append(label)
+                return names
+    return []
 
-def _parse_walmart_items(raw_items: list[dict], store_name: str) -> list[Product]:
+def _parse_walmart_items(raw_items: list[dict], store_name: str, brands: list[str]) -> list[Product]:
     products = []
     for item in raw_items:
-        product = _parse_walmart_item(item, store_name)
+        product = _parse_walmart_item(item, store_name, brands)
         if product:
             products.append(product)
     return products
 
 
-def _parse_walmart_item(item: dict, store_name: str) -> Optional[Product]:
+def _parse_walmart_item(item: dict, store_name: str, brands: list[str]) -> Optional[Product]:
     """
     Map one search item onto Product. Deferred fields (brand/size/upc/location/
     descriptors) are intentionally left empty in this slice.
@@ -295,7 +325,7 @@ def _parse_walmart_item(item: dict, store_name: str) -> Optional[Product]:
 
         price_info = item.get("priceInfo") or {}
         current = (price_info.get("currentPrice") or {}).get("price")
-        was_obj = price_info.get("wasPrice")
+        was_obj = price_info.get("listPrice") or price_info.get("wasPrice") or {}
         was = was_obj.get("price") if was_obj else None
 
         price = _to_float(current)
@@ -310,19 +340,19 @@ def _parse_walmart_item(item: dict, store_name: str) -> Optional[Product]:
         avail = (item.get("availabilityStatusV2") or {}).get("value", "IN_STOCK")
 
         return Product(
-            id=str(item.get("usItemId") or item.get("id") or ""),
+            id=str(item.get("usItemId") or item.get("id")),
             name=name,
-            brand=None,                 # search returns null; brand-facet pass later
-            size=None,                  # derive from unitPrice / name later
+            brand=match_brand(name, brands),
+            size=None,                          # derive from unitPrice / name later
             price=price,
             regular_price=regular_price,
             on_sale=on_sale,
             sale_conditions=None,
             image_url=image_url,
             store=store_name,
-            store_location=None,        # PDP-only, fetched lazily later
+            store_location=None,                # PDP-only, fetched lazily later
             in_stock=avail != "OUT_OF_STOCK",
-            upc=None,                   # PDP-only
+            upc=None,                           # PDP-only
             descriptors=[],
         )
     except Exception as e:

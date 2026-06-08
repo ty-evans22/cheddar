@@ -2,6 +2,7 @@ import os
 import asyncio
 import contextlib
 import time
+import traceback
 from fastapi import FastAPI, Query, HTTPException
 from dotenv import load_dotenv
 from models.base import Product
@@ -98,7 +99,8 @@ async def search_products(
     products = []
     for store_name, result in zip(store_keys, results):
         if isinstance(result, Exception):
-            print(f"Error scraping {store_name}: {result}")
+            print(f"Error scraping {store_name}: {result!r}")   # !r shows the type
+            traceback.print_exception(type(result), result, result.__traceback__)
             continue
         products.extend(result)
 

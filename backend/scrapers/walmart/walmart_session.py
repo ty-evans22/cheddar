@@ -269,14 +269,20 @@ async def get_warmed_session(force: bool = False) -> WarmedSession:
     global _warmed
     async with _warm_lock:
         if force:
+            print("[session] forced re-warm: clearing memory + disk")
             _clear_session()
             _warmed = None
         if _warmed and not _warmed.is_expired():
+            age = int(time.time() - _warmed.created_at)
+            print(f"[session] reuse in-memory (age {age}s / TTL {int(SESSION_TTL_SECONDS)}s)")
             return _warmed
         disk = _load_session()
         if disk:
             _warmed = disk
+            age = int(time.time() - disk.created_at)
+            print(f"[session] loaded from disk (age {age}s / TTL {int(SESSION_TTL_SECONDS)}s)")
             return _warmed
+        print("[session] WARMING fresh session")
         _warmed = await _warm()
         _save_session(_warmed)
         return _warmed
