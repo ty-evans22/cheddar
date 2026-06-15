@@ -1,14 +1,22 @@
 import os
 import json
 import uuid
+from dotenv import load_dotenv
 from typing import Optional
 from curl_cffi.requests import AsyncSession
 from models.base import Product
 from utils.http import browser_session
 
-SEARCH_QUERY_HASH = os.getenv("SEARCH_QUERY_HASH")
-ITEMS_QUERY_HASH = os.getenv("ITEMS_QUERY_HASH")
-POSTAL_CODE = os.getenv("POSTAL_CODE")
+load_dotenv()
+
+def _require_env(name: str) -> str:
+    value = os.getenv(name)
+    if not value:
+        raise RuntimeError(
+            f"{name} is not set — add it to backend/.env. "
+            f"(Persisted-query hashes and POSTAL_CODE are required for Instacart stores.)"
+        )
+    return value
 
 ITEM_PLACEMENT_TYPES = {
     "SearchContentManagementSearchItemGrid",
@@ -93,6 +101,8 @@ async def _fetch_items(
     """
     Bulk fetch full item details for a list of itemIds.
     """
+    items_hash = _require_env("ITEMS_QUERY_HASH")
+
     variables = {
         "ids": item_ids,
         "shopId": shop_id,
@@ -103,7 +113,7 @@ async def _fetch_items(
     extensions = {
         "persistedQuery": {
             "version": 1,
-            "sha256Hash": ITEMS_QUERY_HASH,
+            "sha256Hash": items_hash,
         }
     }
 
@@ -127,7 +137,7 @@ async def _fetch_items(
     data = response.json()
 
     items = (
-        data.get("data", {})
+        (data.get("data") or {})
         .get("items", [])
     )
     print(f"Fetched {len(items)} items from bulk Items query")
@@ -139,12 +149,15 @@ async def search_instacart_store(
     zone_id: str,
     store_name: str,
     query: str,
-    postal_code: str = POSTAL_CODE,
+    postal_code: Optional[str] = None,
     limit: int = 40,
 ) -> list[Product]:
     """
     Search for products in a specific Instacart store and return a list of products.
     """
+    postal_code = postal_code or _require_env("POSTAL_CODE")
+    search_hash = _require_env("SEARCH_QUERY_HASH")
+
     page_view_id = str(uuid.uuid4())
 
     variables = {
@@ -152,7 +165,6 @@ async def search_instacart_store(
         "query": query,
         "pageViewId": page_view_id,
         "elevatedProductId": None,
-        "searchId": str(uuid.uuid4()),
         "searchSource": "search",
         "filters": [],
         "disableReformulation": False,
@@ -172,7 +184,7 @@ async def search_instacart_store(
     extensions = {
         "persistedQuery": {
             "version": 1,
-            "sha256Hash": SEARCH_QUERY_HASH,
+            "sha256Hash": search_hash,
         }
     }
 
@@ -200,9 +212,16 @@ async def search_instacart_store(
         search_response.raise_for_status()
         search_data = search_response.json()
 
+        if search_data.get("errors"):
+            print(f"GraphQL errors for {store_name}: {search_data['errors']}")
+
+        data_root = search_data.get("data")
+        if not data_root:
+            print(f"No data block for {store_name}; full response: {search_data}")
+            return []
+
         placements = (
-            search_data.get("data", {})
-            .get("searchResultsPlacements", {})
+            (data_root.get("searchResultsPlacements") or {})
             .get("placements", [])
         )
 
